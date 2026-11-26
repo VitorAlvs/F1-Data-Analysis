@@ -54,7 +54,7 @@ O desenho experimental adota o framework **SPR-CRISP-DM** (*Sport Result Predict
 Os datasets em `data/` combinam o **baseline histórico congelado (`2014–2022`)** com ingestão incremental e idempotente da **API OpenF1 (`2023–presente`)**, executada sem banco de dados local diretamente em runners Ubuntu do GitHub Actions.
 
 ```mermaid
-flowchart TD
+flowchart LR
     A["Trigger: Cron Seg 09h BRT ou workflow_dispatch"] --> B["src/pipeline/sync.py<br/>Modo Incremental"]
     B --> C["OpenF1 API v1<br/>Rate Limit: 3 req/s e 28 req/min | Guard: date_end + 2h"]
     C --> D["transformers.py + dob_resolver.py<br/>Padronizacao, Clima, Stints e Posicao por Volta"]
