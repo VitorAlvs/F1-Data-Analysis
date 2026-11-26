@@ -54,7 +54,7 @@ jobs:
           python -m src.pipeline.sync "${ARGS[@]}"
 
       - name: Validate datasets and unit tests
-        run: pytest tests/ -v
+        run: python -m pytest tests/ -v
 
       - name: Check for dataset or config changes
         id: changes
