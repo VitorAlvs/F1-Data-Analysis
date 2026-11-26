@@ -40,6 +40,34 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = Path(__file__).resolve().parent / "config"
 DEFAULT_DATA_DIR = REPO_ROOT / "data"
 MIN_OPENF1_YEAR = 2023
+COMPLETE_SEASON_MIN_ROUNDS = 20
+
+
+def _count_csv_data_rows(path: Path) -> int:
+    """Fast line-based data row count without parsing the full CSV into pandas."""
+    if not path.is_file():
+        return 0
+    with open(path, "rb") as fh:
+        total_lines = sum(1 for _ in fh)
+    return max(0, total_lines - 1)
+
+
+def select_incremental_years(
+    already_synced: Set[Tuple[int, int]],
+    current_year: int,
+    min_year: int = MIN_OPENF1_YEAR,
+    complete_season_min_rounds: int = COMPLETE_SEASON_MIN_ROUNDS,
+) -> List[int]:
+    """Selects minimal years to inspect in incremental mode.
+
+    Always inspects `current_year`, and includes `current_year - 1` only if it is
+    within the OpenF1 window and has fewer than `complete_season_min_rounds` synced.
+    """
+    prev_year = current_year - 1
+    prev_rounds = sum(1 for y, _ in already_synced if y == prev_year)
+    if prev_year >= min_year and prev_rounds < complete_season_min_rounds:
+        return [prev_year, current_year]
+    return [current_year]
 
 
 def load_configs(config_dir: Path = CONFIG_DIR) -> Tuple[Dict[str, str], Dict[str, str], Dict[str, float]]:
@@ -167,12 +195,12 @@ def run_sync(
 
     existing_qualy = read_view_csv(data_dir / QUALY_FILENAME, QUALY_COLUMNS)
     existing_results = read_view_csv(data_dir / RESULTS_FILENAME, RESULTS_COLUMNS)
-    existing_ts = read_view_csv(data_dir / TIMESERIES_FILENAME, TIMESERIES_COLUMNS)
+    ts_path = data_dir / TIMESERIES_FILENAME
 
     before_counts = {
         QUALY_FILENAME: len(existing_qualy),
         RESULTS_FILENAME: len(existing_results),
-        TIMESERIES_FILENAME: len(existing_ts),
+        TIMESERIES_FILENAME: _count_csv_data_rows(ts_path),
     }
 
     # Determine target years and replacement policy
@@ -191,11 +219,26 @@ def run_sync(
         target_years = [year]
         mode_desc = f"sync year={year}" + (f" round={round_num}" if round_num else "")
     else:
-        already_synced = get_synced_rounds(data_dir, min_year=MIN_OPENF1_YEAR)
-        max_synced_year = max((y for y, _ in already_synced), default=MIN_OPENF1_YEAR)
-        start_y = max(MIN_OPENF1_YEAR, min(max_synced_year, current_year - 1))
-        target_years = list(range(start_y, current_year + 1))
-        mode_desc = f"incremental ({start_y}..{current_year})"
+        if not existing_qualy.empty and not existing_results.empty:
+            q_pairs = {
+                (int(y), int(r))
+                for y, r in zip(existing_qualy["ano"], existing_qualy["rodada"])
+                if pd.notna(y) and pd.notna(r) and int(y) >= MIN_OPENF1_YEAR
+            }
+            r_pairs = {
+                (int(y), int(r))
+                for y, r in zip(existing_results["ano"], existing_results["rodada"])
+                if pd.notna(y) and pd.notna(r) and int(y) >= MIN_OPENF1_YEAR
+            }
+            already_synced = q_pairs & r_pairs
+        else:
+            already_synced = get_synced_rounds(data_dir, min_year=MIN_OPENF1_YEAR)
+        target_years = select_incremental_years(already_synced, current_year=current_year)
+        mode_desc = (
+            f"incremental ({target_years[0]}..{target_years[-1]})"
+            if len(target_years) > 1
+            else f"incremental ({target_years[0]})"
+        )
 
     log.info("Starting OpenF1 sync | mode=%s | dry_run=%s", mode_desc, dry_run)
 
@@ -401,6 +444,9 @@ def run_sync(
         if new_ts_frames
         else pd.DataFrame(columns=TIMESERIES_COLUMNS)
     )
+
+    existing_ts = read_view_csv(ts_path, TIMESERIES_COLUMNS)
+    before_counts[TIMESERIES_FILENAME] = len(existing_ts)
 
     merged_qualy = merge_view_data(
         existing_qualy,

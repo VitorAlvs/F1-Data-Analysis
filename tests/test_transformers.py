@@ -390,3 +390,16 @@ def test_openf1_client_discover_excludes_testing_and_sprint():
     assert gps[0]["tipo_evento"] == "sprint_weekend"
     assert gps[0]["race_session"]["session_key"] == 9104
     assert gps[0]["qualifying_session"]["session_key"] == 9103
+
+
+def test_select_incremental_years_skips_completed_previous_season():
+    from src.pipeline.sync import select_incremental_years
+
+    # 2025 already has 24 rounds (>= 20) -> only inspect 2026
+    synced_complete = {(2025, r) for r in range(1, 25)} | {(2026, r) for r in range(1, 10)}
+    assert select_incremental_years(synced_complete, current_year=2026) == [2026]
+
+    # 2025 incomplete (< 20 rounds) -> inspect both 2025 and 2026
+    synced_incomplete = {(2025, r) for r in range(1, 15)}
+    assert select_incremental_years(synced_incomplete, current_year=2026) == [2025, 2026]
+
