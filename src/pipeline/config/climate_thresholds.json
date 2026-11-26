@@ -1,0 +1,5 @@
+{
+  "warm_min_celsius": 25.0,
+  "cold_max_celsius": 18.0,
+  "windy_min_kmh": 25.0
+}

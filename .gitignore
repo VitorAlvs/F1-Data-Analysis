@@ -1,9 +1,17 @@
 # Python cache directories
 __pycache__/
-
-# Compiled bytecode files
 *.py[cod]
 *$py.class
+.pytest_cache/
 
+# Virtual environments
 venv/
+.venv/
+
+# Secrets & environment
 *.env
+.env
+
+# Legacy code & local caches (never tracked)
+legado/
+.cache/
